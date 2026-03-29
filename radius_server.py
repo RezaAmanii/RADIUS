@@ -107,22 +107,29 @@ def get_user_info(
     return b""
 
 
-def decrypt_password(encrypted_password: bytes, key: bytes) -> str:
+def decrypt_password(encrypted_password: bytes, shared_secret: bytes, authenticator: bytes) -> str:
     """
     Decrypt the RADIUS encrypted password using the MD5 key.
 
     Parameters:
     encrypted_password (bytes): The password bytes received from the RADIUS request.
-    key (bytes): The MD5 key (typically MD5(shared_secret + authenticator)).
+    shared_secret (bytes): A shared secret between the server and user.
+    authenticator (bytes):
 
     Returns:
     str: Decrypted password as UTF-8 string with null padding removed.
     """
     result = []
-    for byte, k in zip(encrypted_password, key):
-        curr_decrypted = byte ^ k
-        result.append(curr_decrypted)
+    previous_chunk = authenticator
 
+    for c in range(0, len(encrypted_password), 16):
+        chunk = encrypted_password[c:c+16]
+        key = hashlib.md5(shared_secret + previous_chunk).digest()
+       
+        for byte, k in zip(chunk, key):
+            curr_decrypted = byte ^ k
+            result.append(curr_decrypted)
+        previous_chunk = chunk
     decrypted_result = bytes(result).decode("utf-8")
 
     # Remove the training null padding
@@ -185,7 +192,7 @@ def main():
             key = hashlib.md5(shared_secret + packet_info["authenticator"]).digest()
 
             # Decrypted Password
-            decrypted_password = decrypt_password(encrypted_password, key)
+            decrypted_password = decrypt_password(encrypted_password, shared_secret, packet_info['authenticator'])
 
         print(f"Recieved {len(packet_data)} bytes from {nas_address}")
 
